@@ -37,7 +37,8 @@ class Chip8:
         self.run()
 
     def load(self):
-        file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/IBM logo.ch8"
+        file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/test_opcode.ch8"
+        #file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/IBM Logo.ch8"
         with open(file, "rb") as rom:
             loc = 0x200
             for byte in rom.read():
@@ -88,13 +89,50 @@ class Chip8:
             # 2NNN CALL - store program counter then set program counter
             self.stack.append(self.PC)
             self.PC = NNN
+        elif nib1 == 0x3:
+            # 3XNN skip one instruction if value in VX equal to NN
+            if self.variableRegister[X] == NN:
+                self.PC += 2
+        elif nib1 == 0x4:
+            # 4XNN skip one instruction if value in VX NOT equal to NN
+            if self.variableRegister[X] != NN:
+                self.PC += 2
+        elif nib1 == 0x5:
+            # 5XY0 skip one instruction if value in VX equal to VY
+            if self.variableRegister[X] == self.variableRegister[Y]:
+                self.PC += 2
         elif nib1 == 0x6:
             # 6XNN SET - set VX to NN
-            print(f'setting VX to {NN}')
             self.variableRegister[X] = NN
         elif nib1 == 0x7:
             # 7XNN ADD - add NN to VX
             self.variableRegister[X] += NN
+        elif nib1 == 0x8:
+            # Logical and arithmetic instructions
+            if N == 0:
+                # 8XY0 set VX to VY
+                self.variableRegister[X] = self.variableRegister[Y]
+            elif N == 1:
+                # 8XY1 set VX to Binary OR of VX and VY
+                self.variableRegister[X] |= self.variableRegister[Y]
+            elif N == 2:
+                # 8XY2 set VX to Binary AND of VX and VY
+                self.variableRegister[X] &= self.variableRegister[Y]
+            elif N == 3:
+                # 8XY3 set VX to Binary XOR of VX and VY
+                self.variableRegister[X] ^= self.variableRegister[Y]
+            elif N == 4:
+                # 8XY4 add VY to VX
+                result = self.variableRegister[X] + self.variableRegister[Y]
+                if result > 0xFF:
+                    self.variableRegister[X] = 0xFF
+                    self.variableRegister[0xF] = 1
+                else:
+                    self.variableRegister[X] = result
+        elif nib1 == 0x9:
+            # 9XY0 skip one instruction if value in VX NOT equal to VY
+            if self.variableRegister[X] != self.variableRegister[Y]:
+                self.PC += 2
         elif nib1 == 0xA:
             # ANNN SET - set index register to NNN
             print(f'setting index register to {NNN}')
@@ -178,7 +216,11 @@ class SoftwareRenderer(sdl2.ext.SoftwareSpriteRenderSystem):
                 else:
                     pixels[x10:x10+10,y10:y10+10] = self.background
                     #pixels[x,y] = self.background
-
+        
+        for x in range(0, 640, 10):
+            sdl2.ext.fill(self.surface, sdl2.ext.Color(30,30,30), (x, 0, 1, 320))
+        for y in range(0, 320, 10):
+            sdl2.ext.fill(self.surface, sdl2.ext.Color(30,30,30), (0, y, 640, 1))
                 
         super(SoftwareRenderer, self).render(components)
 
