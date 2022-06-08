@@ -8,7 +8,7 @@ import os
 class Chip8:
     def __init__(self):
         self.shiftMethod = True # a configurable option for instructions that shift 8XY6 & 8XYE
-        self.cycleSpeed = 100 # 700 MHz is a good speed for most Chip8 games
+        self.cycleSpeed = 700 # 700 MHz is a good speed for most Chip8 games
         self.memory = [0x0]*4096 # 4 kilobytes of RAM
         self.display = [[0] * 32 for _ in range(64)] # 64 x 32 pixels monochrome
         self.PC = 0x200 # A program counter pointing at current instruction in memory
@@ -45,7 +45,6 @@ class Chip8:
             for byte in rom.read():
                 self.memory[loc] = byte
                 loc += 1
-                print(byte)
 
     def fetch(self):
         # print('fetching')
@@ -111,19 +110,19 @@ class Chip8:
             self.variableRegister[X] &= 0xFF
         elif nib1 == 0x8:
             # Logical and arithmetic instructions
-            if N == 0:
+            if N == 0x0:
                 # 8XY0 set VX to VY
                 self.variableRegister[X] = self.variableRegister[Y]
-            elif N == 1:
+            elif N == 0x1:
                 # 8XY1 set VX to Binary OR of VX and VY
                 self.variableRegister[X] |= self.variableRegister[Y]
-            elif N == 2:
+            elif N == 0x2:
                 # 8XY2 set VX to Binary AND of VX and VY
                 self.variableRegister[X] &= self.variableRegister[Y]
-            elif N == 3:
+            elif N == 0x3:
                 # 8XY3 set VX to Binary XOR of VX and VY
                 self.variableRegister[X] ^= self.variableRegister[Y]
-            elif N == 4:
+            elif N == 0x4:
                 # 8XY4 add VY to VX
                 self.variableRegister[X] += self.variableRegister[Y]
                 if self.variableRegister[X] > 0xFF:
@@ -131,33 +130,47 @@ class Chip8:
                     self.variableRegister[0xF] = 1
                 else:
                     self.variableRegister[X] = 0
-            elif N == 5:
+            elif N == 0x5:
                 # 8XY5 subtract VY from VX
-                print(f'VX: {self.variableRegister[X]} VY: {self.variableRegister[Y]}')
+                # VF Flag is set to 1 if the result is positive and 0 if negative
                 if self.variableRegister[X] > self.variableRegister[Y]:
                     self.variableRegister[0xF] = 1
                 else:
                     self.variableRegister[0xF] = 0
-
                 self.variableRegister[X] = self.variableRegister[X] - self.variableRegister[Y]
+                # only keep the smallest 8 bits
                 self.variableRegister[X] &= 0xFF
-                print(f'VX: {self.variableRegister[X]}')
-            elif N == 6:
-                # 8XY6 subtract VY from VX
+            elif N == 0x6:
+                # 8XY6 shift the value in VX one bit to the right 
+                # shift method determines whether VY is copied into VX before the operation
+                # The VY copy was the original method of this instruction, but it was changed with Chip-48
                 if self.shiftMethod:
                     self.variableRegister[X] = self.variableRegister[Y]
-                self.variableRegister[X] >> 1
-            elif N == 7:
+                # set VF flag to value of the bit to be shifted out
+                self.variableRegister[0xF] = (self.variableRegister[X] & 1)
+                # shift VX
+                self.variableRegister[X] >>= 1
+            elif N == 0x7:
                 # 8XY7 subtract VX from VY and set to VX
-                print(f'VX = {self.variableRegister[X]} VY = {self.variableRegister[Y]}')
+                # VF Flag is set to 1 if the result is positive and 0 if negative
                 if self.variableRegister[Y] > self.variableRegister[X]:
                     self.variableRegister[0xF] = 1
                 elif self.variableRegister[X] > self.variableRegister[Y]:
                     self.variableRegister[0xF] = 0
-
                 self.variableRegister[X] = self.variableRegister[Y] - self.variableRegister[X]
+                # only keep the smallest 8 bits
                 self.variableRegister[X] &= 0xFF
-
+            elif N == 0xE:
+                # 8XYE shift the value in VX one bit to the left 
+                # shift method determines whether VY is copied into VX before the operation
+                # The VY copy was the original method of this instruction, but it was changed with Chip-48
+                if self.shiftMethod:
+                    self.variableRegister[X] = self.variableRegister[Y]
+                # set VF flag to value of the bit to be shifted out
+                self.variableRegister[0xF] = (self.variableRegister[X] & 0b10000000)
+                # shift VX to the left and only keep the smallest 8 bits
+                self.variableRegister[X] <<= 1
+                self.variableRegister[X] &= 0xFF
         elif nib1 == 0x9:
             # 9XY0 skip one instruction if value in VX NOT equal to VY
             if self.variableRegister[X] != self.variableRegister[Y]:
