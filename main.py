@@ -7,6 +7,7 @@ import os
 
 class Chip8:
     def __init__(self):
+        self.shiftMethod = True # a configurable option for instructions that shift 8XY6 & 8XYE
         self.cycleSpeed = 100 # 700 MHz is a good speed for most Chip8 games
         self.memory = [0x0]*4096 # 4 kilobytes of RAM
         self.display = [[0] * 32 for _ in range(64)] # 64 x 32 pixels monochrome
@@ -51,7 +52,7 @@ class Chip8:
         firstByte = self.memory[self.PC]        # read instruction PC is pointing at
         secondByte = self.memory[self.PC + 1]
         opcode = (firstByte << 8 | secondByte)
-        print(f'firstByte = {firstByte} secondByte = {secondByte} opcode = {hex(opcode)}')
+        #print(f'firstByte = {firstByte} secondByte = {secondByte} opcode = {hex(opcode)}')
         self.PC += 2                            # increment PC by 2 for next opcode
         return opcode
 
@@ -83,7 +84,7 @@ class Chip8:
                 pass
         elif nib1 == 0x1:
             # 1NNN JUMP - Set program counter to address
-            print(f'setting program counter to {NNN}')
+            #print(f'setting program counter to {NNN}')
             self.PC = NNN
         elif nib1 == 0x2:
             # 2NNN CALL - store program counter then set program counter
@@ -107,6 +108,7 @@ class Chip8:
         elif nib1 == 0x7:
             # 7XNN ADD - add NN to VX
             self.variableRegister[X] += NN
+            self.variableRegister[X] &= 0xFF
         elif nib1 == 0x8:
             # Logical and arithmetic instructions
             if N == 0:
@@ -123,12 +125,39 @@ class Chip8:
                 self.variableRegister[X] ^= self.variableRegister[Y]
             elif N == 4:
                 # 8XY4 add VY to VX
-                result = self.variableRegister[X] + self.variableRegister[Y]
-                if result > 0xFF:
-                    self.variableRegister[X] = 0xFF
+                self.variableRegister[X] += self.variableRegister[Y]
+                if self.variableRegister[X] > 0xFF:
+                    self.variableRegister[X] &= 0xFF
                     self.variableRegister[0xF] = 1
                 else:
-                    self.variableRegister[X] = result
+                    self.variableRegister[X] = 0
+            elif N == 5:
+                # 8XY5 subtract VY from VX
+                print(f'VX: {self.variableRegister[X]} VY: {self.variableRegister[Y]}')
+                if self.variableRegister[X] > self.variableRegister[Y]:
+                    self.variableRegister[0xF] = 1
+                else:
+                    self.variableRegister[0xF] = 0
+
+                self.variableRegister[X] = self.variableRegister[X] - self.variableRegister[Y]
+                self.variableRegister[X] &= 0xFF
+                print(f'VX: {self.variableRegister[X]}')
+            elif N == 6:
+                # 8XY6 subtract VY from VX
+                if self.shiftMethod:
+                    self.variableRegister[X] = self.variableRegister[Y]
+                self.variableRegister[X] >> 1
+            elif N == 7:
+                # 8XY7 subtract VX from VY and set to VX
+                print(f'VX = {self.variableRegister[X]} VY = {self.variableRegister[Y]}')
+                if self.variableRegister[Y] > self.variableRegister[X]:
+                    self.variableRegister[0xF] = 1
+                elif self.variableRegister[X] > self.variableRegister[Y]:
+                    self.variableRegister[0xF] = 0
+
+                self.variableRegister[X] = self.variableRegister[Y] - self.variableRegister[X]
+                self.variableRegister[X] &= 0xFF
+
         elif nib1 == 0x9:
             # 9XY0 skip one instruction if value in VX NOT equal to VY
             if self.variableRegister[X] != self.variableRegister[Y]:
@@ -142,10 +171,10 @@ class Chip8:
             pixelX = self.variableRegister[X] & 63
             pixelY = self.variableRegister[Y] & 31
             self.variableRegister[0xF] = 0
-            print(f'drawing sprite: to {pixelX} and {pixelY} ')
+            #print(f'drawing sprite: to {pixelX} and {pixelY} ')
             for row in range(N):
                 byte = self.memory[self.I + row]
-                print(f'byte is {byte}')
+                #print(f'byte is {byte}')
 
                 for col in range(8):
                     # print(f'current pixel X: {pixelX + col} and current pixel Y: {pixelY + row}')
@@ -157,7 +186,7 @@ class Chip8:
                     # get the value of the sprites pixel
                     pixelVal = (byte & bitMask) >> 7 - col
                     # check if both display and sprite pixels are on and will be turned off by XOR then set VF flag
-                    print(f'mask: {bitMask} val: {pixelVal}')
+                    #print(f'mask: {bitMask} val: {pixelVal}')
                     if self.display[pixelX + col][pixelY + row] and pixelVal:
                         self.variableRegister[0xF] = 1
                     # bitwise XOR the sprites pixel with the display pixel
