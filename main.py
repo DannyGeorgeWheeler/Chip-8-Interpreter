@@ -1,9 +1,8 @@
 
-import opcode
 import sdl2
 import sdl2.ext
 import math
-import os
+import random
 
 class Chip8:
     def __init__(self):
@@ -35,6 +34,25 @@ class Chip8:
             0xE: 0x00,
             0xF: 0x00
         }
+        self.keypad = {
+            0x0: [sdl2.SDL_SCANCODE_0, sdl2.SDLK_0],
+            0x1: [sdl2.SDL_SCANCODE_1, sdl2.SDLK_1],
+            0x2: [sdl2.SDL_SCANCODE_2, sdl2.SDLK_2],
+            0x3: [sdl2.SDL_SCANCODE_3, sdl2.SDLK_3],
+            0x4: [sdl2.SDL_SCANCODE_4, sdl2.SDLK_4],
+            0x5: [sdl2.SDL_SCANCODE_5, sdl2.SDLK_5],
+            0x6: [sdl2.SDL_SCANCODE_6, sdl2.SDLK_6],
+            0x7: [sdl2.SDL_SCANCODE_7, sdl2.SDLK_7],
+            0x8: [sdl2.SDL_SCANCODE_8, sdl2.SDLK_8],
+            0x9: [sdl2.SDL_SCANCODE_9, sdl2.SDLK_9],
+            0xA: [sdl2.SDL_SCANCODE_A, sdl2.SDLK_a],
+            0xB: [sdl2.SDL_SCANCODE_B, sdl2.SDLK_b],
+            0xC: [sdl2.SDL_SCANCODE_C, sdl2.SDLK_c],
+            0xD: [sdl2.SDL_SCANCODE_D, sdl2.SDLK_d],
+            0xE: [sdl2.SDL_SCANCODE_E, sdl2.SDLK_e],
+            0xF: [sdl2.SDL_SCANCODE_F, sdl2.SDLK_f]
+        }
+        self.keyUp = None
         self.run()
 
     def load(self):
@@ -73,7 +91,6 @@ class Chip8:
         if nib1 == 0x0:
             if NNN == 0x0E0:    
                 # 00E0 CLS - Clear Display
-                print('clearing display')
                 self.display = [[0] * 32 for _ in range(64)] # 64 x 32 pixels monochrome
             elif NNN == 0x0EE:   
                 # 00EE RET - Return from subroutine
@@ -177,8 +194,13 @@ class Chip8:
                 self.PC += 2
         elif nib1 == 0xA:
             # ANNN SET - set index register to NNN
-            print(f'setting index register to {NNN}')
             self.I = NNN
+        elif nib1 == 0xB:
+            # BNNN Jump to the address NNN plus value in V0
+            self.PC = NNN + self.variableRegister[0x0]
+        elif nib1 == 0xC:
+            # CXNN Set VX to random number and binary AND with NN
+            self.variableRegister[X] = random.randint(0, 255) & NN
         elif nib1 == 0xD:
             # DXYN - draw a sprite from memory location in I to X and Y coords
             pixelX = self.variableRegister[X] & 63
@@ -204,6 +226,44 @@ class Chip8:
                         self.variableRegister[0xF] = 1
                     # bitwise XOR the sprites pixel with the display pixel
                     self.display[pixelX + col][pixelY + row] ^= pixelVal
+        elif nib1 == 0xE:
+            keyStates = sdl2.SDL_GetKeyboardState(None)
+            if NN == 0x9E:
+                # EX9E Skip instruction if key in VX is down
+                if keyStates[self.keypad[X][0]]:
+                    self.PC += 2
+            elif NN == 0xA1:
+                # EXA1 Skip instruction if key in VX is NOT down
+                if not keyStates[self.keypad[X][0]]:
+                    self.PC += 2
+        elif nib1 == 0xF:
+            if NN == 0x07:
+                # FX07 set VX to value of delay timer
+                self.variableRegister[X] = self.delayTimer
+            elif NN == 0x15:
+                # FX15 set delay timer to value of VX
+                self.delayTimer = self.variableRegister[X]
+            elif NN == 0x18:
+                # FX18 set sound timer to value of VX
+                self.soundTimer = self.variableRegister[X]
+            elif NN == 0x1E:
+                # Add VX to Index and set the VF Flag to 1 if it goes above 0x
+                self.I += self.variableRegister[X]
+                if self.I > 0xFFF:
+                    self.variableRegister[0xF] = 1
+                    self.I &= 0xFFF
+            elif NN == 0x0A:
+                # block execution until a key is pressed then assign to VX
+                if not self.keyUp:
+                    PC -= 2
+                else:
+                    for hexVal, keypad in self.keypad.items():
+                        if self.keyUp == keypad[1]:
+                            self.variableRegister[X] = hexVal
+                            continue
+            elif NN == 0x29:
+                pass
+
         else:
             # instruction not recognised
             #raise Exception(f"Instruction {opcode} is not recognsied")
@@ -227,6 +287,10 @@ class Chip8:
                 if event.type == sdl2.SDL_QUIT:
                     running = False
                     break
+                if event.type == sdl2.SDL_KEYUP:
+                    self.keyUp = event.key.keysym.sym
+                else:
+                    self.keyUp = None
             self.cycle()
             renderer.display = self.display
             world.process()
