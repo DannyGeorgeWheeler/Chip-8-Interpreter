@@ -7,7 +7,7 @@ import random
 class Chip8:
     def __init__(self):
         self.shiftMethod = True # a configurable option for instructions that shift 8XY6 & 8XYE
-        self.cycleSpeed = 700 # 700 MHz is a good speed for most Chip8 games
+        self.cycleSpeed = 1700 # 700 MHz is a good speed for most Chip8 games
         self.memory = [0x0]*4096 # 4 kilobytes of RAM
         self.display = [[0] * 32 for _ in range(64)] # 64 x 32 pixels monochrome
         self.PC = 0x200 # A program counter pointing at current instruction in memory
@@ -53,11 +53,34 @@ class Chip8:
             0xF: [sdl2.SDL_SCANCODE_F, sdl2.SDLK_f]
         }
         self.keyUp = None
+        self.fonts = [
+            0xF0, 0x90, 0x90, 0x90, 0xF0, # 0
+            0x20, 0x60, 0x20, 0x20, 0x70, # 1
+            0xF0, 0x10, 0xF0, 0x80, 0xF0, # 2
+            0xF0, 0x10, 0xF0, 0x10, 0xF0, # 3
+            0x90, 0x90, 0xF0, 0x10, 0x10, # 4
+            0xF0, 0x80, 0xF0, 0x10, 0xF0, # 5
+            0xF0, 0x80, 0xF0, 0x90, 0xF0, # 6
+            0xF0, 0x10, 0x20, 0x40, 0x40, # 7
+            0xF0, 0x90, 0xF0, 0x90, 0xF0, # 8
+            0xF0, 0x90, 0xF0, 0x10, 0xF0, # 9
+            0xF0, 0x90, 0xF0, 0x90, 0x90, # A
+            0xE0, 0x90, 0xE0, 0x90, 0xE0, # B
+            0xF0, 0x80, 0x80, 0x80, 0xF0, # C
+            0xE0, 0x90, 0x90, 0x90, 0xE0, # D
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, # E
+            0xF0, 0x80, 0xF0, 0x80, 0x80  # F
+        ]
+        for idx, byte in enumerate(self.fonts):
+            self.memory[idx] = byte
         self.run()
 
     def load(self):
-        file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/test_opcode.ch8"
+        #file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/test_opcode.ch8"
         #file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/IBM Logo.ch8"
+        file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/Breakout [Carmelo Cortez, 1979].ch8"
+        #file = "C:/Users/danny/Desktop/GameDev/Chip8/roms/Connect 4 [David Winter].ch8"
+        
         with open(file, "rb") as rom:
             loc = 0x200
             for byte in rom.read():
@@ -230,11 +253,14 @@ class Chip8:
             keyStates = sdl2.SDL_GetKeyboardState(None)
             if NN == 0x9E:
                 # EX9E Skip instruction if key in VX is down
+                print(f'EX9E {self.keypad[X][0]}')
                 if keyStates[self.keypad[X][0]]:
                     self.PC += 2
             elif NN == 0xA1:
                 # EXA1 Skip instruction if key in VX is NOT down
+                print(f'EXA1 {self.keypad[X][0]}')
                 if not keyStates[self.keypad[X][0]]:
+                    print(f'skipping instruction because key {self.keypad[X][0]} not down')
                     self.PC += 2
         elif nib1 == 0xF:
             if NN == 0x07:
@@ -253,17 +279,36 @@ class Chip8:
                     self.variableRegister[0xF] = 1
                     self.I &= 0xFFF
             elif NN == 0x0A:
-                # block execution until a key is pressed then assign to VX
-                if not self.keyUp:
-                    PC -= 2
+                # FX0A block execution until a key is pressed then assign to VX
+                if self.keyUp == None:
+                    self.PC -= 2
                 else:
+                    print('key press instruction register')
                     for hexVal, keypad in self.keypad.items():
                         if self.keyUp == keypad[1]:
+                            print(f'found key {keypad[1]}')
                             self.variableRegister[X] = hexVal
-                            continue
+                            break
             elif NN == 0x29:
-                pass
-
+                # FX29 set Index to address of hex character in VX
+                self.I = (self.variableRegister[X] & 0xF)
+            elif NN == 0x33:
+                # FX33 Store decimal digits of VX in consecutive memory starting at Index
+                digits = str(self.variableRegister[X])
+                for idx, digit in enumerate(digits):
+                    self.memory[self.I + idx] = int(digit)
+            elif NN == 0x55:
+                # FX55 Store all register values up to VX into memory starting at Index
+                for key, val in self.variableRegister.items():
+                    if key > X:
+                        continue
+                    self.memory[self.I + key] = val
+            elif NN == 0x65:
+                # FX65 Store values in memory starting at index into the register up to VX
+                for key in self.variableRegister.keys():
+                    if key > X:
+                        continue                    
+                    self.variableRegister[key] = self.memory[self.I + key]
         else:
             # instruction not recognised
             #raise Exception(f"Instruction {opcode} is not recognsied")
@@ -278,25 +323,33 @@ class Chip8:
         renderer.display = self.display
         world = sdl2.ext.World()
         world.add_system(renderer)
-        ms = math.floor(1 / self.cycleSpeed * 10000) # calculate milliseconds to refresh
+        ms = math.floor(1 / self.cycleSpeed * 10000) # calculate milliseconds to refresh cycle
         self.load()
         running = True
         while running:
+            self.keyUp = None
+            timer = sdl2.timer.SDL_GetTicks() * 1000
+            if timer % 60 == 0:
+                # print('timerrefresh')
+                if self.delayTimer > 0:
+                    self.delayTimer -= 1
+                if self.soundTimer > 0:
+                    self.soundTimer -= 1
             events = sdl2.ext.get_events()
             for event in events:
                 if event.type == sdl2.SDL_QUIT:
                     running = False
                     break
                 if event.type == sdl2.SDL_KEYUP:
+                    print(f'key up: {event.key.keysym.sym}')
                     self.keyUp = event.key.keysym.sym
-                else:
-                    self.keyUp = None
             self.cycle()
             renderer.display = self.display
             world.process()
             sdl2.SDL_Delay(ms)
 
     def cycle(self):
+        # print(f'delay: {self.delayTimer} sound: {self.soundTimer}')
         instruction = self.fetch()
         self.execute(instruction)
 
